@@ -1,0 +1,84 @@
+#! /usr/bin/env python
+
+"""
+ * File: offb_node.py
+ * Stack and tested in Gazebo Classic 9 SITL
+"""
+
+import rospy
+from geometry_msgs.msg import PoseStamped
+from mavros_msgs.msg import State
+from mavros_msgs.srv import CommandBool, CommandBoolRequest, SetMode, SetModeRequest
+
+current_state = State()
+
+def state_cb(msg):
+    global current_state
+    current_state = msg
+
+if __name__ == "__main__":
+    try:
+        rospy.init_node('offb_node_py')
+    except rospy.exceptions.ROSException as e:
+        print("Node has already been initialized, do nothing")
+
+    state_sub = rospy.Subscriber("mavros/state", State, callback = state_cb)
+
+    local_pos_sub = rospy.Publisher("mavros/setpoint_position/local", PoseStamped, queue_size=10)
+
+    rospy.wait_for_service("mavros/cmd/arming")
+    arming_client = rospy.ServiceProxy("mavros/cmd/arming", CommandBool)
+
+    rospy.wait_for_service("mavros/set_mode")
+    set_mode_client = rospy.ServiceProxy("mavros/set_mode", SetMode)
+
+
+    # Setpoint publhsing rate must be faster than 2Hz
+    rate = rospy.Rate(20)
+
+    # Wait for FCU connection
+
+    while not rospy.is_shutdown() and not current_state.connected:
+        rate.sleep()
+
+
+    pose = PoseStamped()
+
+    pose.pose.position.x = 0
+    pose.pose.position.y = 0
+    pose.pose.position.z = 2
+
+    # Send a few setpoints before starting
+
+    for i in range(100):
+        if(rospy.is_shutdown()):
+            break
+
+        local_pos_sub.publish(pose)
+        rate.sleep()
+
+    offb_set_mode = SetModeRequest()
+    offb_set_mode.custom_mode = "OFFBOARD"
+
+    arm_cmd = CommandBoolRequest()
+    arm_cmd.value = True
+
+    last_req = rospy.Time.now()
+
+    while not rospy.is_shutdown():
+        if(current_state.mode != "OFFBOARD" and (rospy.Time.now() - last_req > rospy.Duration(5.0))):
+            if(set_mode_client.call(offb_set_mode) and set_mode_client.response.mode_sent):
+                rospy.loginfo("Offboard enabled")
+
+
+            last_req = rospy.Time.now()
+        else:
+            if(not current_state.armed and (rospy.Time.now() - last_req > rospy.Duration(5.0))):
+                if(arming_client.call(arm_cmd) and arming_client.response.success):
+                    rospy.loginfo("Vehicle armed")
+
+                last_req = rospy.Time.now()
+
+        local_pos_sub.publish(pose)
+
+        rate.sleep()

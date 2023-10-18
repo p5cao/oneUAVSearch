@@ -1,0 +1,5 @@
+<launch>
+    <node pkg = "three_uav_wp" type = "uav0.py" name = "offb_node0" output = "screen"></node>
+    <node pkg = "three_uav_wp" type = "uav1.py" name = "offb_node1" output = "screen"></node>
+    <node pkg = "three_uav_wp" type = "uav2.py" name = "offb_node2" output = "screen"></node>
+</launch>
